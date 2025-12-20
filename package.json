@@ -1,0 +1,39 @@
+{
+  "name": "reminder-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "dependencies": {
+    "chrono-node": "^2.9.0",
+    "discord-api-types": "^0.38.37",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "i": "^0.3.7",
+    "moment": "^2.30.1",
+    "moment-duration-format": "^2.3.2",
+    "moment-timezone": "^0.6.0",
+    "node-cron": "^4.2.1",
+    "npm": "^11.7.0",
+    "pg": "^8.16.3"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "dev:watch": "tsx watch src/index.ts",
+    "prebuild": "rimraf build",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "node build/index.js",
+    "start:build": "npm run build && npm run start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/pg": "^8.16.0",
+    "rimraf": "^6.1.2",
+    "tsc-alias": "^1.8.16",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

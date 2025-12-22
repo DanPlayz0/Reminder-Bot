@@ -1,5 +1,7 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import * as reminderMessageModal from "@/commands/reminder-message";
+import * as timezoneCommand from "@/commands/timezone";
+import * as deleteMessageButton from "@/commands/delete_reminder_message";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -12,9 +14,10 @@ client.on(Events.ClientReady, async (client) => {
   console.log(`Logged in as ${client.user.tag}! (${client.user.id})`);
   console.log(`Invite: https://discord.com/oauth2/authorize?client_id=1451435856714793091`);
 
-  await client.application.commands.set([
-    reminderMessageModal.command,
-  ]);
+  // await client.application.commands.set([
+  //   reminderMessageModal.command,
+  //   timezoneCommand.command
+  // ]);
 });
 
 client.on(Events.GuildCreate, (guild) => {
@@ -26,6 +29,8 @@ client.on(Events.GuildDelete, (guild) => {
 
 client.on(Events.InteractionCreate, (interaction) => {
   if (reminderMessageModal.shouldHandleCommand(interaction)) return reminderMessageModal.handleCommand(interaction);
+  if (timezoneCommand.shouldHandleCommand(interaction)) return timezoneCommand.handleCommand(interaction);
+  if (deleteMessageButton.shouldHandle(interaction)) return deleteMessageButton.handle(interaction);
 
   console.log(interaction);
 });

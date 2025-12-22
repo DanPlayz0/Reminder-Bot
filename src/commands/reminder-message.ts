@@ -1,6 +1,10 @@
+import { createReminder } from "@/sql/reminders";
+import { getTimezone } from "@/sql/timezones";
 import textDisplay from "@/utils/textDisplay";
 import { nlpTimestamp } from "@/utils/time-nlp";
+import { Timezones } from "@/utils/timezone";
 import { ApplicationCommandDataResolvable, ApplicationCommandType, ApplicationIntegrationType, ButtonStyle, CacheType, ComponentType, Interaction, InteractionContextType, MessageFlags, SeparatorSpacingSize } from "discord.js";
+import moment from "moment";
 
 export const command: ApplicationCommandDataResolvable = {
   type: ApplicationCommandType.Message,
@@ -10,25 +14,22 @@ export const command: ApplicationCommandDataResolvable = {
 };
 
 const CREATE_MODAL_CUSTOM_ID = "create-reminder-message";
-const CONFIRM_BUTTON_CUSTOM_ID = "confirm-reminder-message";
+// const CONFIRM_BUTTON_CUSTOM_ID = "confirm-reminder-message";
 
 export const shouldHandleCommand = (interaction: Interaction<CacheType>): boolean => {
   if (interaction.isMessageContextMenuCommand() && interaction.commandName === command.name) return true;
   if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) return true;
-  if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) return true;
+  // if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) return true;
   return false;
 }
 
 export const handleCommand = async (interaction: Interaction<CacheType>) => {
   if (interaction.isMessageContextMenuCommand()) {
+    // console.log(interaction);
     return interaction.showModal({
       title: "Create Reminder",
       custom_id: CREATE_MODAL_CUSTOM_ID,
       components: [
-        {
-          type: ComponentType.TextDisplay,
-          content: `This reminder will have a message attached to it, the message by: <@${interaction.targetMessage.author.id}> (\`${interaction.targetMessage.author.tag}\`, ${interaction.targetMessage.author.id}). View more info at the bottom of this modal.`,
-        },
         {
           type: ComponentType.ActionRow,
           components: [
@@ -39,6 +40,7 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
               label: "When should I remind you?",
               required: true,
               min_length: 1,
+              max_length: 256,
               placeholder: "in 1 hour and 2 days",
             }
           ]
@@ -50,85 +52,52 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
               type: ComponentType.TextInput,
               custom_id: "message",
               style: 2,
-              label: "Notes for the reminder (optional)",
-              required: false,
+              label: "Reminder content",
+              required: true,
               placeholder: "Add this as a sticker",
+              min_length: 1,
+              max_length: 2048,
+              value: `https://discord.com/channels/${interaction.targetMessage.guildId || interaction.guild?.id || interaction.guildId || '@me'}/${interaction.targetMessage.channelId}/${interaction.targetMessage.id}`,
             }
           ]
-        },
-        {
-          type: ComponentType.TextDisplay,
-          content: `Referenced Message: ${interaction.targetMessage.url}\n` + (interaction.targetMessage.content ? "```md\n"+interaction.targetMessage.content+"\n```" : ""),
         }
       ]
     });
   } else if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) {
     const time = interaction.fields.getTextInputValue("time");
+    const message = interaction.fields.getTextInputValue("message");
+    const userTimezone = await getTimezone(interaction.user.id, "user");
     let sendReminderAt: Date;
     try {
       const nlpResult = nlpTimestamp(time, {
         instant: interaction.createdAt,
         userId: interaction.user.id,
         guildId: "guildId" in interaction ? interaction.guildId ?? undefined : undefined,
+        timezone: moment.tz(userTimezone || Timezones.EST).zoneAbbr()
       });
       if (!nlpResult) throw new Error("Could not parse time");
       sendReminderAt = nlpResult.start;
     } catch {
       return interaction.reply({
         flags: MessageFlags.Ephemeral,
-        content: "❌ Unable to parse the time you provided. Please try again with a different format.",
+        content: `❌ Unable to parse the time you provided. Please try again with a different format.\n\nIn case you forgot what you wrote: \`\`\`md\n${message}\`\`\``,
       });
     }
     const markdownTimeSeconds = Math.floor(sendReminderAt.getTime() / 1000);
-    
+
+    await createReminder({
+      user_id: interaction.user.id,
+      remind_at: sendReminderAt,
+      message: message,
+    })
+
     interaction.reply({
-      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
-      components: [
-        {
-          type: ComponentType.TextDisplay,
-          content: `**Please review the reminder below.** If it is correct, please press "Confirm".\nIt will be sent <t:${markdownTimeSeconds}:F> (<t:${markdownTimeSeconds}:R>).`
-        },
-        {
-          type: ComponentType.Container,
-          components: [
-            {
-              type: ComponentType.TextDisplay,
-              content: `### You requested this reminder on <t:${Math.floor(interaction.createdAt.getTime() / 1000)}:D>.`
-            },
-            {
-              type: ComponentType.Separator,
-              divider: true,
-              spacing: SeparatorSpacingSize.Small
-            },
-            {
-              type: ComponentType.TextDisplay,
-              content: [
-                `**When:** <t:${markdownTimeSeconds}:F> (<t:${markdownTimeSeconds}:R>)`,
-                `**Notes:** ${interaction.fields.getTextInputValue("message") || "_No additional notes provided._"}`,
-                `**Referenced Message by <@${interaction.message?.author.id}>:** ${interaction.message?.content ? "```md\n"+interaction.message.content+"\n```" : interaction.message?.url}`
-              ].join("\n")
-            }
-          ]
-        },
-        {
-          type: ComponentType.ActionRow,
-          components: [
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Success,
-              label: "Confirm",
-              custom_id: CONFIRM_BUTTON_CUSTOM_ID
-            }
-          ]
-        }
-      ]
-    });
-  } else if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) {
-    //@ts-expect-error
-    await interaction.update({ components: textDisplay(`Your reminder has been created and will be sent at ${interaction.message.components[1].components[2].content}`) });
-    // await new Promise((resolve) => setTimeout(resolve, 2980)); // Simulate async operation
-    // createReminder()
-  }
-  // Your logic to handle the command
-  // You can use the `interaction` object to interact with the user and perform the desired action
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+      components: textDisplay([
+        `Okay! I will remind you about the following at <t:${markdownTimeSeconds}:F> *(<t:${markdownTimeSeconds}:R>)*`,
+        `${userTimezone ? "" : "-# ⚠️ I couldn't find your timezone, so the time I interpreted this reminder for is based on EST. You can set your timezone using `/timezone set`.\n"}`,
+        `Your reminder message:\n\`\`\`md\n${message.slice(0, 2048)}\`\`\``,
+      ].join('\n'))
+    })
+  };
 }

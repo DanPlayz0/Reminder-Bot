@@ -42,13 +42,13 @@ function mergeText(text1: string, text2: string): string {
 const IGNORE_WORDS = ['in', 'and', 'about', 'to', 'between'];
 export function nlpTimestamp(
   value: string,
-  context: { instant?: Date; userId?: string; guildId?: string; } = {},
+  context: { instant?: Date; userId?: string; guildId?: string; timezone?: string } = {},
 ): NLPTimestampResult {
   let instant: Date = context.instant ?? new Date();
 
   const results = customChrono.parse(value, {
     instant,
-    timezone: getTimezoneAbbreviation(getTimezoneFromContext(context)),
+    timezone: context.timezone,//: getTimezoneAbbreviation(getTimezoneFromContext(context)),
   }, {forwardDate: true});
   if (!results.length) {
     throw new Error('Must provide some sort of time in your text');

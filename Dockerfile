@@ -1,5 +1,5 @@
 # ====== Stage 1: Build ======
-FROM node:lts-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN npm run build
 RUN rm -rf src
 
 # ====== Stage 2: Production ======
-FROM node:lts-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 

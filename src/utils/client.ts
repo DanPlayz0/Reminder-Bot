@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import * as reminderMessageModal from "@/commands/reminder-message";
 import * as timezoneCommand from "@/commands/timezone";
 import * as deleteMessageButton from "@/commands/delete_reminder_message";
+import * as remindLaterButton from "@/commands/remind-later";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -31,6 +32,7 @@ client.on(Events.InteractionCreate, (interaction) => {
   if (reminderMessageModal.shouldHandleCommand(interaction)) return reminderMessageModal.handleCommand(interaction);
   if (timezoneCommand.shouldHandleCommand(interaction)) return timezoneCommand.handleCommand(interaction);
   if (deleteMessageButton.shouldHandle(interaction)) return deleteMessageButton.handle(interaction);
+  if (remindLaterButton.shouldHandle(interaction)) return remindLaterButton.handle(interaction);
 
   console.log(interaction);
 });

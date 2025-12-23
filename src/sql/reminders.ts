@@ -23,12 +23,12 @@ interface Reminder {
   created_at: Date;
 }
 
-export async function findRemindersWithinNextMinute() {
+export async function findRemindersWithinNextMinute(): Promise<Reminder[]> {
   const result = await pool.query(`SELECT * FROM reminders WHERE remind_at <= NOW() AND sent_at IS NULL`);
   return result.rows as Reminder[];
 }
 
-export async function createReminder(reminder: Omit<Reminder, "id" | "created_at" | "channel_id"> & { channel_id?: string | null }) {
+export async function createReminder(reminder: Omit<Reminder, "id" | "created_at" | "channel_id"> & { channel_id?: string | null }): Promise<Reminder> {
   const result = await pool.query(
     `INSERT INTO reminders (user_id, channel_id, message, remind_at) VALUES ($1, $2, $3, $4) RETURNING *`,
     [reminder.user_id, reminder.channel_id ?? null, reminder.message, reminder.remind_at]
@@ -36,6 +36,11 @@ export async function createReminder(reminder: Omit<Reminder, "id" | "created_at
   return result.rows[0] as Reminder;
 }
 
-export async function markReminderAsSent(reminderId: number) {
+export async function markReminderAsSent(reminderId: number): Promise<void> {
   await pool.query(`UPDATE reminders SET sent_at = NOW() WHERE id = $1`, [reminderId]);
+}
+
+export async function getReminderById(id: number): Promise<Reminder | null> {
+  const result = await pool.query(`SELECT * FROM reminders WHERE id = $1`, [id]);
+  return result.rows[0] || null as Reminder | null;
 }

@@ -1,8 +1,8 @@
+import { custom_id_prefix as RemindLaterCustomId } from "@/commands/remind-later";
 import { custom_id_prefix as DeleteMessageCustomId } from "@/commands/delete_reminder_message";
 import { getDMChannel, setDMChannel } from "@/sql/dm-channels";
 import { findRemindersWithinNextMinute, markReminderAsSent } from "@/sql/reminders";
 import client from "@/utils/client";
-import textDisplay from "@/utils/textDisplay";
 import { ButtonStyle, ComponentType, MessageFlags } from "discord.js";
 
 export default async function findAndSendReminders() {
@@ -23,10 +23,6 @@ export default async function findAndSendReminders() {
       await setDMChannel(reminder.user_id, dmChannelId);
       console.log(`Created new DM channel ${dmChannelId} for user ${reminder.user_id}.`);
     }
-
-    // let sendTo = client.users.send.bind(client.users, reminder.user_id);
-    // const dmChannel = await getDMChannel(reminder.user_id);
-    // if (dmChannel) {
 
     let sendTo = null;
     const channel = await client.channels.fetch(dmChannelId).catch(() => null);
@@ -53,6 +49,12 @@ export default async function findAndSendReminders() {
                 label: "Delete Message",
                 custom_id: `${DeleteMessageCustomId}:${reminder.id}`
               },
+              {
+                type: ComponentType.Button,
+                style: ButtonStyle.Secondary,
+                label: "Remind Later",
+                custom_id: `${RemindLaterCustomId}:${reminder.id}`
+              }
             ]
           }
         ],

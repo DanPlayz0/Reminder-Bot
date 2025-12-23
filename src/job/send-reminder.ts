@@ -1,3 +1,4 @@
+import { custom_id_prefix as DeleteMessageCustomId } from "@/commands/delete_reminder_message";
 import { getDMChannel, setDMChannel } from "@/sql/dm-channels";
 import { findRemindersWithinNextMinute, markReminderAsSent } from "@/sql/reminders";
 import client from "@/utils/client";
@@ -19,7 +20,7 @@ export default async function findAndSendReminders() {
     if (!dmChannelId) {
       const res = await client.users.createDM(reminder.user_id);
       dmChannelId = res.id;
-      setDMChannel(reminder.user_id, dmChannelId);
+      await setDMChannel(reminder.user_id, dmChannelId);
       console.log(`Created new DM channel ${dmChannelId} for user ${reminder.user_id}.`);
     }
 
@@ -35,32 +36,38 @@ export default async function findAndSendReminders() {
       continue;
     }
 
-    await sendTo({
-      flags: MessageFlags.IsComponentsV2,
-      components: [
-        {
-          type: ComponentType.TextDisplay,
-          content: `${reminder.message}\n-# This reminder was created <t:${Math.floor(reminder.created_at.getTime() / 1000)}:f>`
-        },
-        {
-          type: ComponentType.ActionRow,
-          components: [
-            {
-              type: ComponentType.Button,
-              style: ButtonStyle.Danger,
-              label: "Delete Message",
-              custom_id: `delete_reminder_message:${reminder.id}`
-            }
-          ]
-        }
-      ],
-    });
+    try {
+      await sendTo({
+        flags: MessageFlags.IsComponentsV2,
+        components: [
+          {
+            type: ComponentType.TextDisplay,
+            content: `${reminder.message}\n-# This reminder was created <t:${Math.floor(reminder.created_at.getTime() / 1000)}:f>`
+          },
+          {
+            type: ComponentType.ActionRow,
+            components: [
+              {
+                type: ComponentType.Button,
+                style: ButtonStyle.Danger,
+                label: "Delete Message",
+                custom_id: `${DeleteMessageCustomId}:${reminder.id}`
+              },
+            ]
+          }
+        ],
+      });
+      await markReminderAsSent(reminder.id);
+    } catch (e: any) {
+      if ("code" in e && e.code === 50007) {
+        console.log(`Cannot send messages to user ${reminder.user_id}, marking reminder as sent.`);
+        await markReminderAsSent(reminder.id);
+        continue;
+      } else {
+        console.log(`Failed to send reminder to user ${reminder.user_id}:`, e);
+      }
+    }
 
-    await markReminderAsSent(reminder.id);
 
   }
 }
-
-// # ⏰ Reminder
-// https://discord.com/channels/772012572648013824/772016589654589440/1452586588331708527
-// -# This reminder was set on <t:1766399836:f>

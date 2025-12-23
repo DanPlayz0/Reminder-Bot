@@ -11,7 +11,7 @@ export const shouldHandle = (interaction: Interaction<CacheType>): boolean => {
 
 export const handle = async (interaction: Interaction<CacheType>) => {
   if (!interaction.isButton()) return;
-  const reminderId = interaction.customId.slice(custom_id_prefix.length);
+  const reminderId = interaction.customId.slice(custom_id_prefix.length+1);
   const reminder = await getReminderById(Number(reminderId));
   if (!reminder) {
     await interaction.reply({

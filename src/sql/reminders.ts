@@ -24,7 +24,7 @@ interface Reminder {
 }
 
 export async function findRemindersWithinNextMinute(): Promise<Reminder[]> {
-  const result = await pool.query(`SELECT * FROM reminders WHERE remind_at <= NOW() AND sent_at IS NULL`);
+  const result = await pool.query(`SELECT * FROM reminders WHERE sent_at IS NULL AND remind_at < NOW() + INTERVAL '1 minute'`);
   return result.rows as Reminder[];
 }
 

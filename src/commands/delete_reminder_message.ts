@@ -16,7 +16,7 @@ export const handle = async (interaction: Interaction<CacheType>) => {
   if (!interaction.isButton()) return;
   if (interaction.message.deletable) {
     await interaction.deferUpdate();
-    // await interaction.message.delete(); // Apparently it doesn't like uncached DM channels
+    // await interaction.message.delete(); // Apparently djs doesn't like uncached DM channels
     await interaction.client.rest.delete(Routes.channelMessage(interaction.channelId, interaction.message.id));
   }
   else {

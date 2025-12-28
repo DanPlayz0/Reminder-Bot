@@ -3,6 +3,7 @@ import * as reminderMessageModal from "@/commands/reminder-message";
 import * as timezoneCommand from "@/commands/timezone";
 import * as deleteMessageButton from "@/commands/delete_reminder_message";
 import * as remindLaterButton from "@/commands/remind-later";
+import * as remindCommand from "@/commands/remind";
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -21,6 +22,7 @@ client.on(Events.ClientReady, async (client) => {
     await client.application.commands.set([
       reminderMessageModal.command,
       timezoneCommand.command,
+      remindCommand.command,
     ]);
   }
 });
@@ -37,6 +39,7 @@ client.on(Events.InteractionCreate, (interaction) => {
   if (timezoneCommand.shouldHandleCommand(interaction)) return timezoneCommand.handleCommand(interaction);
   if (deleteMessageButton.shouldHandle(interaction)) return deleteMessageButton.handle(interaction);
   if (remindLaterButton.shouldHandle(interaction)) return remindLaterButton.handle(interaction);
+  if (remindCommand.shouldHandleCommand(interaction)) return remindCommand.handleCommand(interaction);
 
   console.log(interaction);
 });

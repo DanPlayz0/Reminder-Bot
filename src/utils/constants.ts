@@ -1,0 +1,1 @@
+export const MAX_REMINDER_MESSAGE_LENGTH = 512;

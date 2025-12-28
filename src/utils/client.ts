@@ -15,10 +15,14 @@ client.on(Events.ClientReady, async (client) => {
   console.log(`Logged in as ${client.user.tag}! (${client.user.id})`);
   console.log(`Invite: https://discord.com/oauth2/authorize?client_id=1451435856714793091`);
 
-  // await client.application.commands.set([
-  //   reminderMessageModal.command,
-  //   timezoneCommand.command
-  // ]);
+  const commands = await client.application.commands.fetch();
+  if (commands.size === 0) {
+    console.log("Registering application commands...");
+    await client.application.commands.set([
+      reminderMessageModal.command,
+      timezoneCommand.command,
+    ]);
+  }
 });
 
 client.on(Events.GuildCreate, (guild) => {

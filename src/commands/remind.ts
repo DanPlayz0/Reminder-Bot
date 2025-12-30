@@ -122,8 +122,13 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
           {
             type: ComponentType.Container,
             components: reminders.map((reminder, index) => ({
-              type: ComponentType.TextDisplay,
-              content: `#1 ${isPast(reminders[0].remind_at, "Reminding", "Reminded")} <t:${dateToRelativeMarkdown(reminder.remind_at)}:R>:\n${reminder.message.slice(0, 100)}`,
+              type: ComponentType.Section,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `#1 ${isPast(reminders[0].remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
+                }
+              ],
               accessory: {
                 type: ComponentType.Button,
                 label: "Remove Reminder",

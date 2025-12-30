@@ -32,10 +32,10 @@ export const command: ApplicationCommandDataResolvable = {
           type: ApplicationCommandOptionType.String,
           name: "include_sent",
           description: "Include sent reminders in the list.",
-          required: true,
+          required: false,
           choices: [
             { name: "Yes", value: "yes" },
-            { name: "No", value: "no" },
+            { name: "No (Default)", value: "no" },
           ],
         },
       ],
@@ -101,7 +101,7 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
   if (interaction.isChatInputCommand() && interaction.commandName === command.name) {
     const subcommand = interaction.options.getSubcommand();
     if (subcommand === "list") {
-      const includeSent = interaction.options.getString("include_sent", true) === "yes";
+      const includeSent = interaction.options.getString("include_sent", false) === "yes";
 
       const reminders = await getUserReminders(interaction.user.id, includeSent);
       if (reminders.length === 0) {

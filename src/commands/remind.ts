@@ -14,7 +14,7 @@ import {
 } from "discord.js";
 import moment from "moment";
 import { getModalData, handleCreate } from "./reminder-message";
-import { MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
+import { MAX_COMPONENTS, MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
 
 export const command: ApplicationCommandDataResolvable = {
   type: ApplicationCommandType.ChatInput,
@@ -119,20 +119,20 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
         flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         components: [
           {
-            type: ComponentType.Container,
-            components: reminders.map((reminder, index) => ({
-              type: ComponentType.Section,
+            type: ComponentType.Container, // 1
+            components: reminders.slice(0,(MAX_COMPONENTS-1)/3).map((reminder, index) => ({
+              type: ComponentType.Section, // n + 1
               components: [
                 {
-                  type: ComponentType.TextDisplay,
+                  type: ComponentType.TextDisplay, // n +2
                   content: `#1 ${isPast(reminders[0].remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
                 }
               ],
               accessory: {
-                type: ComponentType.Button,
+                type: ComponentType.Button, // n+3
                 label: "Delete Reminder",
                 style: ButtonStyle.Danger,
-                customId: `${DELETE_REMINDER_CUSTOM_ID_PREFIX}${reminder.id}`,
+                custom_id: `${DELETE_REMINDER_CUSTOM_ID_PREFIX}${reminder.id}`,
               },
             })),
           },

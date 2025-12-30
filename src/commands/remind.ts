@@ -82,13 +82,12 @@ export const command: ApplicationCommandDataResolvable = {
     },
   ],
 };
+const DELETE_REMINDER_CUSTOM_ID_PREFIX = "reminder:delete:";
 
 export const shouldHandleCommand = (interaction: Interaction<CacheType>): boolean => {
   if ((interaction.isAutocomplete() || interaction.isChatInputCommand()) && interaction.commandName === command.name) return true;
-  console.log(interaction);
-  // if (interaction.isMessageContextMenuCommand() && interaction.commandName === command.name) return true;
-  // if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) return true;
-  // if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) return true;
+  if (interaction.isButton() && interaction.customId.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) return true;
+
   return false;
 };
 
@@ -131,9 +130,9 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
               ],
               accessory: {
                 type: ComponentType.Button,
-                label: "Remove Reminder",
+                label: "Delete Reminder",
                 style: ButtonStyle.Danger,
-                customId: `reminder:delete:${reminder.id}`,
+                customId: `${DELETE_REMINDER_CUSTOM_ID_PREFIX}${reminder.id}`,
               },
             })),
           },
@@ -171,5 +170,20 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
         }))
       );
     }
+  } else if (interaction.isButton() && interaction.customId.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) {
+    const reminderId = interaction.customId.slice(DELETE_REMINDER_CUSTOM_ID_PREFIX.length);
+    const reminder = await getUserReminderById(interaction.user.id, parseInt(reminderId));
+    if (!reminder) {
+      return interaction.reply({
+        content: `Reminder with ID ${reminderId} not found or already deleted.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    await deleteUserReminderById(interaction.user.id, parseInt(reminderId));
+
+    return interaction.reply({
+      content: `Reminder with ID ${reminderId} has been deleted.\nReminder Message was set to remind ${dateToRelativeMarkdown(reminder.remind_at)}${reminder.sent_at ? ` and was sent ${dateToRelativeMarkdown(reminder.sent_at)}` : ""}: \`\`\`md\n${reminder.message}\`\`\``,
+      flags: MessageFlags.Ephemeral,
+    });
   }
 };

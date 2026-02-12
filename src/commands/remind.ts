@@ -125,7 +125,7 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
               components: [
                 {
                   type: ComponentType.TextDisplay, // n +2
-                  content: `#1 ${isPast(reminders[0].remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
+                  content: `#${index+1} ${isPast(reminder.remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
                 }
               ],
               accessory: {

@@ -5,8 +5,11 @@ import { findRemindersWithinNextMinute, markReminderAsSent } from "@/sql/reminde
 import client from "@/utils/client";
 import { ButtonStyle, ComponentType, MessageFlags } from "discord.js";
 
+let failureCount = 0;
+
 export default async function findAndSendReminders() {
   // console.log("Finding and sending reminders...");
+  let minuteFails = 0;
   const reminders = await findRemindersWithinNextMinute();
   for (const reminder of reminders) {
     console.log(`Sending reminder to user ${reminder.user_id}: ${reminder.message}`);
@@ -61,15 +64,26 @@ export default async function findAndSendReminders() {
       });
       await markReminderAsSent(reminder.id);
     } catch (e: any) {
-      if ("code" in e && e.code === 50007) {
+      // 50007 = Cannot send messages to this user
+      // 50278 = Cannot send messages to this user due to having no mutual guilds
+      if ("code" in e && (e.code === 50007 || e.code === 50278)) {
         console.log(`Cannot send messages to user ${reminder.user_id}, marking reminder as sent.`);
         await markReminderAsSent(reminder.id);
         continue;
       } else {
         console.log(`Failed to send reminder to user ${reminder.user_id}:`, e);
+        minuteFails++;
       }
     }
+  }
 
-
+  if (minuteFails > 0) {
+    failureCount += minuteFails;
+    console.log(`Failed to send ${minuteFails} reminders in the last minute.`);
+  }
+  if (failureCount >= 10) {
+    console.log(`Failed to send ${failureCount} reminders in a row, pausing reminder sending for 10 minutes.`);
+    failureCount = 0;
+    await new Promise(resolve => setTimeout(resolve, 10*60000)); // Wait 10 minutes before trying again
   }
 }

@@ -94,7 +94,11 @@ export const command: RESTPostAPIApplicationCommandsJSONBody = {
 const DELETE_REMINDER_CUSTOM_ID_PREFIX = "reminder:delete:";
 const DISABLE_REMINDER_CUSTOM_ID_PREFIX = "reminder:disable:";
 const LIST_REMINDERS_CUSTOM_ID_PREFIX = "reminder:list:";
-const LIST_PAGE_SIZE = 8;
+const DISCORD_COMPONENTS_V2_MAX_COMPONENTS = 40;
+const DISCORD_COMPONENTS_V2_MAX_TEXT_LENGTH = 6000;
+const LIST_FIXED_COMPONENT_COUNT = 5; // Container, header text, action row, previous button, next button.
+const LIST_COMPONENTS_PER_ACTIVE_REMINDER = 3; // Section, text display, disable button.
+const LIST_PAGE_SIZE = Math.floor((DISCORD_COMPONENTS_V2_MAX_COMPONENTS - LIST_FIXED_COMPONENT_COUNT) / LIST_COMPONENTS_PER_ACTIVE_REMINDER);
 
 export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
   if ((isAutocomplete(interaction) || isApplicationCommand(interaction)) && interaction.data.name === command.name) return true;
@@ -122,6 +126,16 @@ function reminderStatus(reminder: { remind_at: Date; sent_at: Date | null; activ
   return `${reminder.remind_at.getTime() < Date.now() ? "Overdue" : "Reminding"} ${dateToRelativeMarkdown(reminder.remind_at)}`;
 }
 
+function reminderListPrefix(index: number, reminder: { id: number; remind_at: Date; sent_at: Date | null; active: boolean }) {
+  return `#${index} [${reminder.id}] ${reminderStatus(reminder)}:\n`;
+}
+
+function truncateReminderMessage(message: string, maxLength: number) {
+  if (message.length <= maxLength) return message;
+  if (maxLength <= 3) return message.slice(0, maxLength);
+  return `${message.slice(0, maxLength - 3)}...`;
+}
+
 async function renderReminderList(userId: string, includeSent: boolean, page: number) {
   const reminders = await getUserReminders(userId, includeSent);
   if (reminders.length === 0) {
@@ -134,6 +148,13 @@ async function renderReminderList(userId: string, includeSent: boolean, page: nu
   const totalPages = Math.max(1, Math.ceil(reminders.length / LIST_PAGE_SIZE));
   const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
   const pageReminders = reminders.slice(currentPage * LIST_PAGE_SIZE, (currentPage + 1) * LIST_PAGE_SIZE);
+  const headerContent = `Reminders - Page ${currentPage + 1}/${totalPages}`;
+  const reminderPrefixes = pageReminders.map((reminder, index) => reminderListPrefix(currentPage * LIST_PAGE_SIZE + index + 1, reminder));
+  const fixedTextLength = headerContent.length + reminderPrefixes.reduce((total, prefix) => total + prefix.length, 0);
+  const maxReminderMessageLength = Math.max(
+    0,
+    Math.min(MAX_REMINDER_MESSAGE_LENGTH, Math.floor((DISCORD_COMPONENTS_V2_MAX_TEXT_LENGTH - fixedTextLength) / Math.max(pageReminders.length, 1)))
+  );
 
   return {
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
@@ -143,16 +164,17 @@ async function renderReminderList(userId: string, includeSent: boolean, page: nu
         components: [
           {
             type: ComponentType.TextDisplay,
-            content: `Reminders - Page ${currentPage + 1}/${totalPages}`,
+            content: headerContent,
           },
           ...pageReminders.map((reminder, index) => {
             const absoluteIndex = currentPage * LIST_PAGE_SIZE + index + 1;
+            const prefix = reminderPrefixes[index];
             const section: any = {
               type: ComponentType.Section,
               components: [
                 {
                   type: ComponentType.TextDisplay,
-                  content: `#${absoluteIndex} [${reminder.id}] ${reminderStatus(reminder)}:\n${reminder.message.slice(0, 100)}`,
+                  content: `${prefix}${truncateReminderMessage(reminder.message, maxReminderMessageLength)}`,
                 },
               ],
             };

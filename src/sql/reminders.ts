@@ -39,10 +39,10 @@ export async function findRemindersWithinNextMinute(): Promise<Reminder[]> {
     FROM reminders
     WHERE sent_at IS NULL
       AND active = TRUE
-      AND remind_at < NOW() + INTERVAL '1 minute'
+      AND remind_at < NOW()
       AND next_send_attempt_at <= NOW()
     ORDER BY remind_at ASC
-  `);
+  `); // add "+ INTERVAL '1 minute'" at the end of the NOW() to add a next-minute lookup
   return result.rows as Reminder[];
 }
 

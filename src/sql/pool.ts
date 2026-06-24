@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import * as timezones from "@/sql/timezones";
 import * as reminders from "@/sql/reminders";
 import * as dmChannels from "@/sql/dm-channels";
+import { logError } from "@/utils/logger";
 
 const pool = new Pool({ connectionString: configuration.postgres_url, keepAlive: true, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000 });
 export default pool;
@@ -15,5 +16,5 @@ pool.connect(() => {
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle Postgres client', err);
+  logError('Unexpected error on idle Postgres client', err);
 });

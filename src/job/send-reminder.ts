@@ -3,6 +3,7 @@ import { custom_id_prefix as RemindLaterCustomId } from "@/commands/remind-later
 import { getDMChannel, setDMChannel } from "@/sql/dm-channels";
 import { disableUserReminderById, findRemindersWithinNextMinute, markReminderAsSent, scheduleReminderRetry } from "@/sql/reminders";
 import { rest } from "@/utils/discord";
+import { logError, logMessage } from "@/utils/logger";
 import { ButtonStyle, ComponentType, MessageFlags, RESTPostAPICurrentUserCreateDMChannelResult, Routes } from "discord-api-types/v10";
 
 const MAX_SEND_ATTEMPTS = 8;
@@ -95,7 +96,11 @@ export default async function findAndSendReminders() {
           continue;
         }
 
-        console.log(`Failed to send reminder to user ${reminder.user_id}:`, error);
+        logError(`Failed to send reminder to user ${reminder.user_id}`, error, {
+          reminderId: reminder.id,
+          userId: reminder.user_id,
+          attempts: reminder.send_attempts,
+        });
         const attempts = reminder.send_attempts + 1;
         if (attempts >= MAX_SEND_ATTEMPTS) {
           console.log(`Reminder ${reminder.id} failed ${attempts} times, disabling it.`);
@@ -110,7 +115,9 @@ export default async function findAndSendReminders() {
           consecutiveDiscordFailures++;
           if (consecutiveDiscordFailures >= GLOBAL_FAILURE_THRESHOLD) {
             globalBackoffUntil = Date.now() + GLOBAL_COOLDOWN_MS;
-            console.log(`Discord API appears unhealthy, backing off all reminder sends until ${new Date(globalBackoffUntil).toISOString()}.`);
+            logMessage(`Discord API appears unhealthy, backing off all reminder sends until ${new Date(globalBackoffUntil).toISOString()}.`, {
+              consecutiveDiscordFailures,
+            });
             break;
           }
         }

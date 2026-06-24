@@ -1,9 +1,10 @@
 {
   "name": "reminder-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord HTTP interactions bot inspired by Minecraft Chat Feelings commands.",
   "main": "dist/index.js",
   "dependencies": {
+    "@sentry/node": "^10.60.0",
     "chrono-node": "^2.9.0",
     "discord-api-types": "^0.38.37",
     "discord.js": "^14.25.1",
@@ -19,9 +20,11 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:watch": "tsx watch src/index.ts",
+    "register": "tsx src/register-commands.ts",
     "prebuild": "rimraf build",
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
     "start": "node build/index.js",
+    "register:build": "node build/register-commands.js",
     "start:build": "npm run build && npm run start"
   },
   "keywords": [],

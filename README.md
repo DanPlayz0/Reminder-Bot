@@ -1,6 +1,6 @@
 # Reminder Bot
 
-A reminder bot using NLP for the Discord Buildathon 2025.
+A reminder bot using NLP originally built as a submission to the Discord Buildathon 2025.
 
 ## Instructions
 
@@ -9,25 +9,6 @@ A reminder bot using NLP for the Discord Buildathon 2025.
 3. Add when you'd like to be reminded (in 5 minutes, at 3 pm, 3:11pm, 5m, 15s, etc)
 4. Submit to create the reminder.
 5. Wait and receive your reminder.
-
-## HTTP interactions
-
-This bot runs as a Discord HTTP Interactions endpoint instead of a Gateway bot.
-Configure the Discord Developer Portal interactions endpoint URL to:
-
-```text
-https://your-domain.example/interactions
-```
-
-Required environment variables:
-
-```text
-DISCORD_TOKEN=...
-DISCORD_PUBLIC_KEY=...
-DISCORD_APPLICATION_ID=1451435856714793091
-POSTGRES_URL=...
-PORT=3000
-```
 
 ## Screenshots
 

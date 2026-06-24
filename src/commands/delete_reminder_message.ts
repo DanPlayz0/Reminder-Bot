@@ -1,5 +1,6 @@
 import { rest } from "@/utils/discord";
 import { deferredUpdateResponse, isMessageComponent } from "@/utils/interactions";
+import { logError } from "@/utils/logger";
 import { APIInteraction, APIInteractionResponse, Routes } from "discord-api-types/v10";
 
 export const custom_id_prefix = "delete_reminder_message";
@@ -17,7 +18,7 @@ export const handle = async (interaction: APIInteraction): Promise<APIInteractio
 
   setImmediate(() => {
     rest.delete(Routes.channelMessage(channelId, messageId)).catch((error) => {
-      console.log(`Could not delete reminder message ${channelId}/${messageId}:`, error);
+      logError(`Could not delete reminder message ${channelId}/${messageId}`, error, { channelId, messageId });
     });
   });
 

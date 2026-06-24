@@ -7,17 +7,10 @@ import * as remindLaterButton from "@/commands/remind-later";
 import * as reminderMessageModal from "@/commands/reminder-message";
 import * as timezoneCommand from "@/commands/timezone";
 import findAndSendReminders from "@/job/send-reminder";
-import { rest } from "@/utils/discord";
 import { pong, verifyDiscordRequest } from "@/utils/interactions";
-import { APIInteraction, APIInteractionResponse, InteractionType, Routes } from "discord-api-types/v10";
+import { logError } from "@/utils/logger";
+import { APIInteraction, APIInteractionResponse, InteractionType } from "discord-api-types/v10";
 import { createServer, IncomingMessage, ServerResponse } from "http";
-
-async function registerCommands() {
-  await rest.put(Routes.applicationCommands(configuration.application_id), {
-    body: [reminderMessageModal.command, timezoneCommand.command, remindCommand.command],
-  });
-  console.log("Registered application commands.");
-}
 
 async function readBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
@@ -68,18 +61,17 @@ const server = createServer(async (request, response) => {
 
     return sendJson(response, 200, interactionResponse);
   } catch (error) {
-    console.log("Failed to handle request:", error);
+    logError("Failed to handle request", error, {
+      method: request.method,
+      url: request.url,
+    });
     return sendJson(response, 500, { error: "Internal server error" });
   }
 });
 
-registerCommands().catch((error) => {
-  console.log("Failed to register application commands:", error);
-});
-
 setInterval(() => {
   findAndSendReminders().catch((error) => {
-    console.log("Failed to send reminders:", error);
+    logError("Failed to send reminders", error);
   });
 }, 5000);
 

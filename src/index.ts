@@ -1,4 +1,4 @@
-import "./sql/pool";
+import { isPostgresReady } from "@/sql/pool";
 import "./utils/moment-init";
 import configuration from "@/configuration";
 import * as deleteMessageButton from "@/commands/delete_reminder_message";
@@ -7,9 +7,9 @@ import * as remindLaterButton from "@/commands/remind-later";
 import * as reminderMessageModal from "@/commands/reminder-message";
 import * as timezoneCommand from "@/commands/timezone";
 import findAndSendReminders from "@/job/send-reminder";
-import { pong, verifyDiscordRequest } from "@/utils/interactions";
+import { messageResponse, pong, verifyDiscordRequest } from "@/utils/interactions";
 import { logError } from "@/utils/logger";
-import { APIInteraction, APIInteractionResponse, InteractionType } from "discord-api-types/v10";
+import { APIInteraction, APIInteractionResponse, InteractionType, MessageFlags } from "discord-api-types/v10";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 
 async function readBody(request: IncomingMessage) {
@@ -25,8 +25,20 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function sendText(response: ServerResponse, statusCode: number, body: string) {
+  response.writeHead(statusCode, { "content-type": "text/plain" });
+  response.end(body);
+}
+
 async function handleInteraction(interaction: APIInteraction): Promise<APIInteractionResponse | undefined> {
   if (interaction.type === InteractionType.Ping) return pong();
+  if (!isPostgresReady()) {
+    return messageResponse({
+      content: "The bot is still starting up. Please try again in a moment.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   if (reminderMessageModal.shouldHandleCommand(interaction)) return reminderMessageModal.handleCommand(interaction);
   if (timezoneCommand.shouldHandleCommand(interaction)) return timezoneCommand.handleCommand(interaction);
   if (deleteMessageButton.shouldHandle(interaction)) return deleteMessageButton.handle(interaction);
@@ -40,7 +52,8 @@ async function handleInteraction(interaction: APIInteraction): Promise<APIIntera
 const server = createServer(async (request, response) => {
   try {
     if (request.method === "GET" && request.url === "/health") {
-      return sendJson(response, 200, { ok: true });
+      if (!isPostgresReady()) return sendText(response, 503, "starting");
+      return sendText(response, 200, "healthy");
     }
 
     if (request.method !== "POST" || request.url !== "/interactions") {
@@ -70,6 +83,7 @@ const server = createServer(async (request, response) => {
 });
 
 setInterval(() => {
+  if (!isPostgresReady()) return;
   findAndSendReminders().catch((error) => {
     logError("Failed to send reminders", error);
   });

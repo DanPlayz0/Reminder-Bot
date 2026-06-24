@@ -41,6 +41,13 @@ export function messageResponse(data: any): APIInteractionResponse {
   };
 }
 
+export function updateMessageResponse(data: any): APIInteractionResponse {
+  return {
+    type: InteractionResponseType.UpdateMessage,
+    data,
+  };
+}
+
 export function modalResponse(data: any): APIInteractionResponse {
   return {
     type: InteractionResponseType.Modal,

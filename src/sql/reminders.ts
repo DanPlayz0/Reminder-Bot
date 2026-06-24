@@ -9,9 +9,15 @@ export async function createTable() {
       message TEXT NOT NULL,
       remind_at TIMESTAMPTZ NOT NULL,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-      sent_at TIMESTAMPTZ NULL
+      sent_at TIMESTAMPTZ NULL,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      send_attempts INTEGER NOT NULL DEFAULT 0,
+      next_send_attempt_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  await pool.query(`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;`);
+  await pool.query(`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS send_attempts INTEGER NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS next_send_attempt_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;`);
 }
 
 interface Reminder {
@@ -22,14 +28,27 @@ interface Reminder {
   remind_at: Date;
   created_at: Date;
   sent_at: Date | null;
+  active: boolean;
+  send_attempts: number;
+  next_send_attempt_at: Date;
 }
 
 export async function findRemindersWithinNextMinute(): Promise<Reminder[]> {
-  const result = await pool.query(`SELECT * FROM reminders WHERE sent_at IS NULL AND remind_at < NOW() + INTERVAL '1 minute'`);
+  const result = await pool.query(`
+    SELECT *
+    FROM reminders
+    WHERE sent_at IS NULL
+      AND active = TRUE
+      AND remind_at < NOW() + INTERVAL '1 minute'
+      AND next_send_attempt_at <= NOW()
+    ORDER BY remind_at ASC
+  `);
   return result.rows as Reminder[];
 }
 
-export async function createReminder(reminder: Omit<Reminder, "id" | "created_at" | "channel_id" | "sent_at"> & { channel_id?: string | null }): Promise<Reminder> {
+export async function createReminder(
+  reminder: Omit<Reminder, "id" | "created_at" | "channel_id" | "sent_at" | "active" | "send_attempts" | "next_send_attempt_at"> & { channel_id?: string | null }
+): Promise<Reminder> {
   const result = await pool.query(
     `INSERT INTO reminders (user_id, channel_id, message, remind_at) VALUES ($1, $2, $3, $4) RETURNING *`,
     [reminder.user_id, reminder.channel_id ?? null, reminder.message, reminder.remind_at]
@@ -41,6 +60,16 @@ export async function markReminderAsSent(reminderId: number): Promise<void> {
   await pool.query(`UPDATE reminders SET sent_at = NOW() WHERE id = $1`, [reminderId]);
 }
 
+export async function scheduleReminderRetry(reminderId: number, nextAttemptAt: Date): Promise<void> {
+  await pool.query(`UPDATE reminders SET send_attempts = send_attempts + 1, next_send_attempt_at = $2 WHERE id = $1`, [reminderId, nextAttemptAt]);
+}
+
+export async function disableUserReminderById(user_id: string, reminder_id: number): Promise<Reminder | null> {
+  const query = `UPDATE reminders SET active = FALSE WHERE user_id = $1 AND id = $2 AND sent_at IS NULL AND active = TRUE RETURNING *`;
+  const result = await pool.query(query, [user_id, reminder_id]);
+  return result.rows[0] || null as Reminder | null;
+}
+
 export async function getReminderById(id: number): Promise<Reminder | null> {
   const result = await pool.query(`SELECT * FROM reminders WHERE id = $1`, [id]);
   return result.rows[0] || null as Reminder | null;
@@ -49,7 +78,7 @@ export async function getReminderById(id: number): Promise<Reminder | null> {
 export async function getUserReminders(userId: string, includeSent: boolean): Promise<Reminder[]> {
   const query = includeSent
     ? `SELECT * FROM reminders WHERE user_id = $1 ORDER BY remind_at ASC`
-    : `SELECT * FROM reminders WHERE user_id = $1 AND sent_at IS NULL ORDER BY remind_at ASC`;
+    : `SELECT * FROM reminders WHERE user_id = $1 AND sent_at IS NULL AND active = TRUE ORDER BY remind_at ASC`;
   const result = await pool.query(query, [userId]);
   return result.rows as Reminder[];
 }

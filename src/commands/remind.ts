@@ -1,6 +1,6 @@
-import { deleteUserReminderById, getUserReminderById, getUserReminders } from "@/sql/reminders";
-import { MAX_COMPONENTS, MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
-import { autocompleteResponse, ephemeralText, getFocusedOption, getOption, getSubcommand, getUserId, isApplicationCommand, isAutocomplete, isMessageComponent, messageResponse, modalResponse } from "@/utils/interactions";
+import { deleteUserReminderById, disableUserReminderById, getUserReminderById, getUserReminders } from "@/sql/reminders";
+import { MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
+import { autocompleteResponse, ephemeralText, getFocusedOption, getOption, getSubcommand, getUserId, isApplicationCommand, isAutocomplete, isMessageComponent, messageResponse, modalResponse, updateMessageResponse } from "@/utils/interactions";
 import textDisplay from "@/utils/textDisplay";
 import {
   APIInteraction,
@@ -38,6 +38,13 @@ export const command: RESTPostAPIApplicationCommandsJSONBody = {
             { name: "Yes", value: "yes" },
             { name: "No (Default)", value: "no" },
           ],
+        },
+        {
+          type: ApplicationCommandOptionType.Integer,
+          name: "page",
+          description: "The page number to show.",
+          required: false,
+          min_value: 1,
         },
       ],
     },
@@ -85,10 +92,15 @@ export const command: RESTPostAPIApplicationCommandsJSONBody = {
 };
 
 const DELETE_REMINDER_CUSTOM_ID_PREFIX = "reminder:delete:";
+const DISABLE_REMINDER_CUSTOM_ID_PREFIX = "reminder:disable:";
+const LIST_REMINDERS_CUSTOM_ID_PREFIX = "reminder:list:";
+const LIST_PAGE_SIZE = 8;
 
 export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
   if ((isAutocomplete(interaction) || isApplicationCommand(interaction)) && interaction.data.name === command.name) return true;
   if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) return true;
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DISABLE_REMINDER_CUSTOM_ID_PREFIX)) return true;
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(LIST_REMINDERS_CUSTOM_ID_PREFIX)) return true;
   return false;
 };
 
@@ -104,6 +116,83 @@ function reminderDeletedMessage(reminderId: string, reminder: { remind_at: Date;
   }: \`\`\`md\n${reminder.message}\`\`\``;
 }
 
+function reminderStatus(reminder: { remind_at: Date; sent_at: Date | null; active: boolean }) {
+  if (!reminder.active) return "Inactive";
+  if (reminder.sent_at) return `Sent ${dateToRelativeMarkdown(reminder.sent_at)}`;
+  return `${reminder.remind_at.getTime() < Date.now() ? "Overdue" : "Reminding"} ${dateToRelativeMarkdown(reminder.remind_at)}`;
+}
+
+async function renderReminderList(userId: string, includeSent: boolean, page: number) {
+  const reminders = await getUserReminders(userId, includeSent);
+  if (reminders.length === 0) {
+    return {
+      components: textDisplay(`You have no ${includeSent ? "" : "upcoming "}reminders.`),
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+    };
+  }
+
+  const totalPages = Math.max(1, Math.ceil(reminders.length / LIST_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(page, 0), totalPages - 1);
+  const pageReminders = reminders.slice(currentPage * LIST_PAGE_SIZE, (currentPage + 1) * LIST_PAGE_SIZE);
+
+  return {
+    flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+    components: [
+      {
+        type: ComponentType.Container,
+        components: [
+          {
+            type: ComponentType.TextDisplay,
+            content: `Reminders - Page ${currentPage + 1}/${totalPages}`,
+          },
+          ...pageReminders.map((reminder, index) => {
+            const absoluteIndex = currentPage * LIST_PAGE_SIZE + index + 1;
+            const section: any = {
+              type: ComponentType.Section,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `#${absoluteIndex} [${reminder.id}] ${reminderStatus(reminder)}:\n${reminder.message.slice(0, 100)}`,
+                },
+              ],
+            };
+
+            if (!reminder.sent_at && reminder.active) {
+              section.accessory = {
+                type: ComponentType.Button,
+                label: "Disable",
+                style: ButtonStyle.Secondary,
+                custom_id: `${DISABLE_REMINDER_CUSTOM_ID_PREFIX}${includeSent ? "1" : "0"}:${currentPage}:${reminder.id}`,
+              };
+            }
+
+            return section;
+          }),
+          {
+            type: ComponentType.ActionRow,
+            components: [
+              {
+                type: ComponentType.Button,
+                label: "Previous",
+                style: ButtonStyle.Secondary,
+                custom_id: `${LIST_REMINDERS_CUSTOM_ID_PREFIX}${includeSent ? "1" : "0"}:${currentPage - 1}`,
+                disabled: currentPage === 0,
+              },
+              {
+                type: ComponentType.Button,
+                label: "Next",
+                style: ButtonStyle.Secondary,
+                custom_id: `${LIST_REMINDERS_CUSTOM_ID_PREFIX}${includeSent ? "1" : "0"}:${currentPage + 1}`,
+                disabled: currentPage >= totalPages - 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export const handleCommand = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
   if (isApplicationCommand(interaction) && interaction.data.name === command.name) {
     const subcommand = getSubcommand(interaction);
@@ -111,39 +200,8 @@ export const handleCommand = async (interaction: APIInteraction): Promise<APIInt
 
     if (subcommand?.name === "list") {
       const includeSent = getOption(subcommand, "include_sent")?.value === "yes";
-      const reminders = await getUserReminders(userId, includeSent);
-      if (reminders.length === 0) {
-        return messageResponse({
-          components: textDisplay(`You have no ${includeSent ? "" : "upcoming "}reminders.`),
-          flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
-        });
-      }
-
-      const isPast = (date: Date, present: string, past: string) => (date.getTime() < Date.now() ? past : present);
-
-      return messageResponse({
-        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
-        components: [
-          {
-            type: ComponentType.Container,
-            components: reminders.slice(0, (MAX_COMPONENTS - 1) / 3).map((reminder, index) => ({
-              type: ComponentType.Section,
-              components: [
-                {
-                  type: ComponentType.TextDisplay,
-                  content: `#${index + 1} ${isPast(reminder.remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
-                },
-              ],
-              accessory: {
-                type: ComponentType.Button,
-                label: "Delete Reminder",
-                style: ButtonStyle.Danger,
-                custom_id: `${DELETE_REMINDER_CUSTOM_ID_PREFIX}${reminder.id}`,
-              },
-            })),
-          },
-        ],
-      });
+      const page = Number(getOption(subcommand, "page")?.value || 1);
+      return messageResponse(await renderReminderList(userId, includeSent, page - 1));
     }
 
     if (subcommand?.name === "create") {
@@ -162,6 +220,7 @@ export const handleCommand = async (interaction: APIInteraction): Promise<APIInt
       await deleteUserReminderById(userId, parseInt(reminderId));
       return ephemeralText(reminderDeletedMessage(reminderId, reminder));
     }
+
   }
 
   if (isAutocomplete(interaction) && interaction.data.name === command.name) {
@@ -178,6 +237,21 @@ export const handleCommand = async (interaction: APIInteraction): Promise<APIInt
         }))
       );
     }
+  }
+
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(LIST_REMINDERS_CUSTOM_ID_PREFIX)) {
+    const [, includeSentValue, pageValue] = interaction.data.custom_id.match(/^reminder:list:(\d):(-?\d+)$/) || [];
+    const includeSent = includeSentValue === "1";
+    const page = Number(pageValue || 0);
+    return updateMessageResponse(await renderReminderList(getUserId(interaction), includeSent, page));
+  }
+
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DISABLE_REMINDER_CUSTOM_ID_PREFIX)) {
+    const [, includeSentValue, pageValue, reminderId] = interaction.data.custom_id.match(/^reminder:disable:(\d):(\d+):(\d+)$/) || [];
+    if (!reminderId) return ephemeralText("Could not parse reminder ID.");
+
+    await disableUserReminderById(getUserId(interaction), parseInt(reminderId));
+    return updateMessageResponse(await renderReminderList(getUserId(interaction), includeSentValue === "1", Number(pageValue || 0)));
   }
 
   if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) {

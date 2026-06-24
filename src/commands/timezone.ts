@@ -1,18 +1,19 @@
 import { deleteTimezone, getTimezone, setTimezone } from "@/sql/timezones";
+import { autocompleteResponse, getFocusedOption, getOption, getSubcommand, getUserId, isApplicationCommand, isAutocomplete, messageResponse } from "@/utils/interactions";
 import textDisplay from "@/utils/textDisplay";
 import {
-  ApplicationCommandDataResolvable,
+  APIInteraction,
+  APIInteractionResponse,
   ApplicationCommandOptionType,
   ApplicationCommandType,
   ApplicationIntegrationType,
-  CacheType,
-  Interaction,
   InteractionContextType,
   MessageFlags,
-} from "discord.js";
+  RESTPostAPIApplicationCommandsJSONBody,
+} from "discord-api-types/v10";
 import moment from "moment";
 
-export const command: ApplicationCommandDataResolvable = {
+export const command: RESTPostAPIApplicationCommandsJSONBody = {
   type: ApplicationCommandType.ChatInput,
   name: "timezone",
   contexts: [InteractionContextType.BotDM, InteractionContextType.Guild, InteractionContextType.PrivateChannel],
@@ -42,95 +43,99 @@ export const command: ApplicationCommandDataResolvable = {
       type: ApplicationCommandOptionType.Subcommand,
       name: "remove",
       description: "Remove your currently set timezone.",
-    }
+    },
   ],
 };
 
-export const shouldHandleCommand = (interaction: Interaction<CacheType>): boolean => {
-  if ((interaction.isAutocomplete() || interaction.isChatInputCommand()) && interaction.commandName === command.name) return true;
-  // if (interaction.isMessageContextMenuCommand() && interaction.commandName === command.name) return true;
-  // if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) return true;
-  // if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) return true;
+const defaultZones = [
+  "America/New_York",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Europe/Paris",
+  "Asia/Tokyo",
+  "Asia/Dubai",
+  "Australia/Sydney",
+  "America/Chicago",
+  "America/Toronto",
+  "Europe/Berlin",
+  "Asia/Shanghai",
+  "Asia/Singapore",
+  "Australia/Melbourne",
+  "America/Mexico_City",
+  "America/Sao_Paulo",
+  "Europe/Madrid",
+  "Asia/Hong_Kong",
+  "Europe/Rome",
+  "Africa/Johannesburg",
+  "America/Buenos_Aires",
+  "Asia/Kolkata",
+  "Asia/Istanbul",
+  "Pacific/Auckland",
+  "Europe/Amsterdam",
+  "America/Denver",
+];
+
+export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
+  if ((isAutocomplete(interaction) || isApplicationCommand(interaction)) && interaction.data.name === command.name) return true;
   return false;
 };
 
-export const handleCommand = async (interaction: Interaction<CacheType>) => {
-  if (interaction.isChatInputCommand() && interaction.commandName === command.name) {
-    const subcommand = interaction.options.getSubcommand();
-    if (subcommand === "set") {
-      const timezone = interaction.options.getString("timezone", true);
-      if (!moment.tz.zone(timezone)) 
-        return interaction.reply({
+export const handleCommand = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
+  if (isApplicationCommand(interaction) && interaction.data.name === command.name) {
+    const subcommand = getSubcommand(interaction);
+    const userId = getUserId(interaction);
+
+    if (subcommand?.name === "set") {
+      const timezone = String(getOption(subcommand, "timezone")?.value || "");
+      if (!moment.tz.zone(timezone)) {
+        return messageResponse({
           components: textDisplay(`The timezone **${timezone}** is not valid. Please provide a valid timezone (e.g., 'America/New_York', 'UTC', 'Europe/London').`),
           flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         });
-      await setTimezone(interaction.user.id, "user", timezone);
-      return interaction.reply({
+      }
+      await setTimezone(userId, "user", timezone);
+      return messageResponse({
         components: textDisplay(`Your timezone has been set to **${timezone}**.`),
         flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
       });
-    } else if (subcommand === "view") {
-      const userTimezone = await getTimezone(interaction.user.id, "user");
+    }
+
+    if (subcommand?.name === "view") {
+      const userTimezone = await getTimezone(userId, "user");
       if (!userTimezone) {
-        return interaction.reply({
-          components: textDisplay(`You have not set a timezone yet. Use \`/timezone set <timezone>\` to set your timezone.`),
+        return messageResponse({
+          components: textDisplay("You have not set a timezone yet. Use `/timezone set <timezone>` to set your timezone."),
           flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         });
       }
-      return interaction.reply({
+      return messageResponse({
         components: textDisplay(`Your currently set timezone is **${userTimezone}**.`),
         flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
       });
-    } else if (subcommand === "remove") {
-      const userTimezone = await getTimezone(interaction.user.id, "user");
+    }
+
+    if (subcommand?.name === "remove") {
+      const userTimezone = await getTimezone(userId, "user");
       if (!userTimezone) {
-        return interaction.reply({
-          components: textDisplay(`You have not set a timezone yet. Use \`/timezone set <timezone>\` to set your timezone.`),
+        return messageResponse({
+          components: textDisplay("You have not set a timezone yet. Use `/timezone set <timezone>` to set your timezone."),
           flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         });
       }
-      await deleteTimezone(interaction.user.id, "user");
-      return interaction.reply({
-        components: textDisplay(`Your timezone has been removed.`),
+      await deleteTimezone(userId, "user");
+      return messageResponse({
+        components: textDisplay("Your timezone has been removed."),
         flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
       });
     }
-  } else if (interaction.isAutocomplete() && interaction.commandName === command.name) {
-    const focusedOption = interaction.options.getFocused(true);
-    if (focusedOption.name == "timezone") {
-      const zones = moment.tz.names();
-      if (!focusedOption.value)
-        return interaction.respond([
-          "America/New_York",
-          "America/Los_Angeles",
-          "Europe/London",
-          "Europe/Paris",
-          "Asia/Tokyo",
-          "Asia/Dubai",
-          "Australia/Sydney",
-          "America/Chicago",
-          "America/Toronto",
-          "Europe/Berlin",
-          "Asia/Shanghai",
-          "Asia/Singapore",
-          "Australia/Melbourne",
-          "America/Mexico_City",
-          "America/Sao_Paulo",
-          "Europe/Madrid",
-          "Asia/Hong_Kong",
-          "Europe/Rome",
-          "Africa/Johannesburg",
-          "America/Buenos_Aires",
-          "Asia/Kolkata",
-          "Asia/Istanbul",
-          "Pacific/Auckland",
-          "Europe/Amsterdam",
-          "America/Denver",
-        ]
-          .map((zone) => ({ name: zone, value: zone }))
-          .slice(0, 25));
-      const results = zones.filter((zone) => zone.toLowerCase().includes(focusedOption.value.toLowerCase())).slice(0, 25);
-      return interaction.respond(results.map((zone) => ({ name: zone, value: zone })).slice(0, 25) || []);
+  }
+
+  if (isAutocomplete(interaction) && interaction.data.name === command.name) {
+    const focusedOption = getFocusedOption(interaction);
+    if (focusedOption?.name === "timezone") {
+      const value = String(focusedOption.value || "").toLowerCase();
+      const results = value ? moment.tz.names().filter((zone) => zone.toLowerCase().includes(value)).slice(0, 25) : defaultZones;
+      return autocompleteResponse(results.map((zone) => ({ name: zone, value: zone })).slice(0, 25));
     }
   }
 };

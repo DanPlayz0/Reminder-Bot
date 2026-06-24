@@ -1,23 +1,34 @@
 import { createReminder } from "@/sql/reminders";
 import { getTimezone } from "@/sql/timezones";
 import { MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
+import {
+  ephemeralText,
+  getCreatedAt,
+  getMessageCommandTarget,
+  getModalValue,
+  getUserId,
+  isApplicationCommand,
+  isModalSubmit,
+  messageResponse,
+  modalResponse,
+} from "@/utils/interactions";
 import textDisplay from "@/utils/textDisplay";
 import { nlpTimestamp } from "@/utils/time-nlp";
 import { Timezones } from "@/utils/timezone";
 import {
+  APIInteraction,
+  APIInteractionResponse,
   APIModalInteractionResponseCallbackData,
-  ApplicationCommandDataResolvable,
   ApplicationCommandType,
   ApplicationIntegrationType,
-  CacheType,
   ComponentType,
-  Interaction,
   InteractionContextType,
   MessageFlags,
-} from "discord.js";
+  RESTPostAPIApplicationCommandsJSONBody,
+} from "discord-api-types/v10";
 import moment from "moment";
 
-export const command: ApplicationCommandDataResolvable = {
+export const command: RESTPostAPIApplicationCommandsJSONBody = {
   type: ApplicationCommandType.Message,
   name: "Remind Me",
   contexts: [InteractionContextType.BotDM, InteractionContextType.Guild, InteractionContextType.PrivateChannel],
@@ -25,12 +36,10 @@ export const command: ApplicationCommandDataResolvable = {
 };
 
 const CREATE_MODAL_CUSTOM_ID = "create-reminder-message";
-// const CONFIRM_BUTTON_CUSTOM_ID = "confirm-reminder-message";
 
-export const shouldHandleCommand = (interaction: Interaction<CacheType>): boolean => {
-  if (interaction.isMessageContextMenuCommand() && interaction.commandName === command.name) return true;
-  if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) return true;
-  // if (interaction.isButton() && interaction.customId == CONFIRM_BUTTON_CUSTOM_ID) return true;
+export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
+  if (isApplicationCommand(interaction) && interaction.data.type === ApplicationCommandType.Message && interaction.data.name === command.name) return true;
+  if (isModalSubmit(interaction) && interaction.data.custom_id === CREATE_MODAL_CUSTOM_ID) return true;
   return false;
 };
 
@@ -74,52 +83,49 @@ export function getModalData(content: string): APIModalInteractionResponseCallba
   };
 }
 
-export const handleCommand = async (interaction: Interaction<CacheType>) => {
-  if (interaction.isMessageContextMenuCommand()) {
-    // console.log(interaction);
-    return interaction.showModal(
-      getModalData(
-        `https://discord.com/channels/${interaction.targetMessage.guildId || interaction.guild?.id || interaction.guildId || "@me"}/${
-          interaction.targetMessage.channelId
-        }/${interaction.targetMessage.id}`
-      )
-    );
-  } else if (interaction.isModalSubmit() && interaction.customId == CREATE_MODAL_CUSTOM_ID) {
-    const time = interaction.fields.getTextInputValue("time");
-    const message = interaction.fields.getTextInputValue("message");
-    return handleCreate(interaction, time, message);
+export const handleCommand = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
+  if (isApplicationCommand(interaction) && interaction.data.type === ApplicationCommandType.Message) {
+    const data = getMessageCommandTarget(interaction);
+    const targetMessage = data?.resolved?.messages?.[data.target_id];
+    const guildId = interaction.guild_id || "@me";
+    const channelId = targetMessage?.channel_id || interaction.channel_id || "@me";
+    const messageId = targetMessage?.id || data?.target_id;
+
+    return modalResponse(getModalData(`https://discord.com/channels/${guildId}/${channelId}/${messageId}`));
+  }
+
+  if (isModalSubmit(interaction) && interaction.data.custom_id === CREATE_MODAL_CUSTOM_ID) {
+    return handleCreate(interaction, getModalValue(interaction, "time"), getModalValue(interaction, "message"));
   }
 };
 
-export async function handleCreate(interaction: Interaction<CacheType>, time: string, message: string) {
-  const userTimezone = await getTimezone(interaction.user.id, "user");
+export async function handleCreate(interaction: APIInteraction, time: string, message: string) {
+  const userId = getUserId(interaction);
+  const userTimezone = await getTimezone(userId, "user");
   let sendReminderAt: Date;
+
   try {
     const nlpResult = nlpTimestamp(time, {
-      instant: interaction.createdAt,
-      userId: interaction.user.id,
-      guildId: "guildId" in interaction ? interaction.guildId ?? undefined : undefined,
+      instant: getCreatedAt(interaction),
+      userId,
+      guildId: interaction.guild_id,
       timezone: moment.tz(userTimezone || Timezones.EST).zoneAbbr(),
     });
     if (!nlpResult) throw new Error("Could not parse time");
     sendReminderAt = nlpResult.start;
   } catch {
-    if (interaction.isRepliable())
-      return interaction.reply({
-        flags: MessageFlags.Ephemeral,
-        content: `❌ Unable to parse the time you provided. Please try again with a different format.\n\nIn case you forgot what you wrote: \`\`\`md\n${message}\`\`\``,
-      });
-    else return;
+    return ephemeralText(`Unable to parse the time you provided. Please try again with a different format.\n\nIn case you forgot what you wrote: \`\`\`md\n${message}\`\`\``);
   }
+
   const markdownTimeSeconds = Math.floor(sendReminderAt.getTime() / 1000);
 
   await createReminder({
-    user_id: interaction.user.id,
+    user_id: userId,
     remind_at: sendReminderAt,
-    message: message,
+    message,
   });
 
-  if (interaction.isRepliable()) interaction.reply({
+  return messageResponse({
     flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
     components: textDisplay(
       [
@@ -127,11 +133,10 @@ export async function handleCreate(interaction: Interaction<CacheType>, time: st
         `${
           userTimezone
             ? ""
-            : "-# ⚠️ I couldn't find your timezone, so the time I interpreted this reminder for is based on EST. You can set your timezone using `/timezone set`.\n"
+            : "-# Warning: I couldn't find your timezone, so the time I interpreted this reminder for is based on EST. You can set your timezone using `/timezone set`.\n"
         }`,
         `Your reminder message:\n\`\`\`md\n${message.slice(0, 2048)}\`\`\``,
       ].join("\n")
     ),
   });
-  return;
 }

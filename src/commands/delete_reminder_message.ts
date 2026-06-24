@@ -1,29 +1,25 @@
-import textDisplay from "@/utils/textDisplay";
-import {
-  CacheType,
-  Interaction, MessageFlags,
-  Routes
-} from "discord.js";
+import { rest } from "@/utils/discord";
+import { deferredUpdateResponse, isMessageComponent } from "@/utils/interactions";
+import { APIInteraction, APIInteractionResponse, Routes } from "discord-api-types/v10";
 
-export const custom_id_prefix = "delete_reminder_message"
+export const custom_id_prefix = "delete_reminder_message";
 
-export const shouldHandle = (interaction: Interaction<CacheType>): boolean => {
-  if (interaction.isButton() && interaction.customId.startsWith(custom_id_prefix)) return true;
+export const shouldHandle = (interaction: APIInteraction): boolean => {
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(custom_id_prefix)) return true;
   return false;
 };
 
-export const handle = async (interaction: Interaction<CacheType>) => {
-  if (!interaction.isButton()) return;
-  if (interaction.message.deletable) {
-    await interaction.deferUpdate();
-    // await interaction.message.delete(); // Apparently djs doesn't like uncached DM channels
-    await interaction.client.rest.delete(Routes.channelMessage(interaction.channelId, interaction.message.id));
-  }
-  else {
-    await interaction.reply({
-      components: textDisplay("Could not delete the reminder message."),
-      flags: MessageFlags.Ephemeral,
+export const handle = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
+  if (!isMessageComponent(interaction)) return;
+
+  const channelId = interaction.channel_id;
+  const messageId = interaction.message.id;
+
+  setImmediate(() => {
+    rest.delete(Routes.channelMessage(channelId, messageId)).catch((error) => {
+      console.log(`Could not delete reminder message ${channelId}/${messageId}:`, error);
     });
-    return;
-  }
+  });
+
+  return deferredUpdateResponse();
 };

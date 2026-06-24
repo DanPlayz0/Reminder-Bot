@@ -1,24 +1,21 @@
 import { getReminderById } from "@/sql/reminders";
-import { CacheType, Interaction, MessageFlags } from "discord.js";
+import { ephemeralText, isMessageComponent, modalResponse } from "@/utils/interactions";
+import { APIInteraction, APIInteractionResponse } from "discord-api-types/v10";
 import { getModalData } from "./reminder-message";
 
 export const custom_id_prefix = "remind-later:";
 
-export const shouldHandle = (interaction: Interaction<CacheType>): boolean => {
-  if (interaction.isButton() && interaction.customId.startsWith(custom_id_prefix)) return true;
+export const shouldHandle = (interaction: APIInteraction): boolean => {
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(custom_id_prefix)) return true;
   return false;
 };
 
-export const handle = async (interaction: Interaction<CacheType>) => {
-  if (!interaction.isButton()) return;
-  const reminderId = interaction.customId.slice(custom_id_prefix.length+1);
+export const handle = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
+  if (!isMessageComponent(interaction)) return;
+
+  const reminderId = interaction.data.custom_id.slice(custom_id_prefix.length);
   const reminder = await getReminderById(Number(reminderId));
-  if (!reminder) {
-    await interaction.reply({
-      content: "❌ | Reminder not found.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  await interaction.showModal(getModalData(reminder.message));
+  if (!reminder) return ephemeralText("Reminder not found.");
+
+  return modalResponse(getModalData(reminder.message));
 };

@@ -1,22 +1,23 @@
 import { deleteUserReminderById, getUserReminderById, getUserReminders } from "@/sql/reminders";
+import { MAX_COMPONENTS, MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
+import { autocompleteResponse, ephemeralText, getFocusedOption, getOption, getSubcommand, getUserId, isApplicationCommand, isAutocomplete, isMessageComponent, messageResponse, modalResponse } from "@/utils/interactions";
 import textDisplay from "@/utils/textDisplay";
 import {
-  ApplicationCommandDataResolvable,
+  APIInteraction,
+  APIInteractionResponse,
   ApplicationCommandOptionType,
   ApplicationCommandType,
   ApplicationIntegrationType,
   ButtonStyle,
-  CacheType,
   ComponentType,
-  Interaction,
   InteractionContextType,
   MessageFlags,
-} from "discord.js";
+  RESTPostAPIApplicationCommandsJSONBody,
+} from "discord-api-types/v10";
 import moment from "moment";
 import { getModalData, handleCreate } from "./reminder-message";
-import { MAX_COMPONENTS, MAX_REMINDER_MESSAGE_LENGTH } from "@/utils/constants";
 
-export const command: ApplicationCommandDataResolvable = {
+export const command: RESTPostAPIApplicationCommandsJSONBody = {
   type: ApplicationCommandType.ChatInput,
   name: "remind",
   contexts: [InteractionContextType.BotDM, InteractionContextType.Guild, InteractionContextType.PrivateChannel],
@@ -82,12 +83,12 @@ export const command: ApplicationCommandDataResolvable = {
     },
   ],
 };
+
 const DELETE_REMINDER_CUSTOM_ID_PREFIX = "reminder:delete:";
 
-export const shouldHandleCommand = (interaction: Interaction<CacheType>): boolean => {
-  if ((interaction.isAutocomplete() || interaction.isChatInputCommand()) && interaction.commandName === command.name) return true;
-  if (interaction.isButton() && interaction.customId.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) return true;
-
+export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
+  if ((isAutocomplete(interaction) || isApplicationCommand(interaction)) && interaction.data.name === command.name) return true;
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) return true;
   return false;
 };
 
@@ -97,39 +98,44 @@ function dateToRelativeMarkdown(date: Date) {
   return `<t:${timestamp}:R>`;
 }
 
-export const handleCommand = async (interaction: Interaction<CacheType>) => {
-  if (interaction.isChatInputCommand() && interaction.commandName === command.name) {
-    const subcommand = interaction.options.getSubcommand();
-    if (subcommand === "list") {
-      const includeSent = interaction.options.getString("include_sent", false) === "yes";
+function reminderDeletedMessage(reminderId: string, reminder: { remind_at: Date; sent_at: Date | null; message: string }) {
+  return `Reminder with ID ${reminderId} has been deleted.\nReminder Message was set to remind ${dateToRelativeMarkdown(reminder.remind_at)}${
+    reminder.sent_at ? ` and was sent ${dateToRelativeMarkdown(reminder.sent_at)}` : ""
+  }: \`\`\`md\n${reminder.message}\`\`\``;
+}
 
-      const reminders = await getUserReminders(interaction.user.id, includeSent);
+export const handleCommand = async (interaction: APIInteraction): Promise<APIInteractionResponse | undefined> => {
+  if (isApplicationCommand(interaction) && interaction.data.name === command.name) {
+    const subcommand = getSubcommand(interaction);
+    const userId = getUserId(interaction);
+
+    if (subcommand?.name === "list") {
+      const includeSent = getOption(subcommand, "include_sent")?.value === "yes";
+      const reminders = await getUserReminders(userId, includeSent);
       if (reminders.length === 0) {
-        return interaction.reply({
+        return messageResponse({
           components: textDisplay(`You have no ${includeSent ? "" : "upcoming "}reminders.`),
           flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         });
       }
 
-      function isPast(date: Date, present: string, past: string) {
-        return date.getTime() < Date.now() ? past : present;
-      }
+      const isPast = (date: Date, present: string, past: string) => (date.getTime() < Date.now() ? past : present);
 
-      interaction.reply({
+      return messageResponse({
         flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
         components: [
           {
-            type: ComponentType.Container, // 1
-            components: reminders.slice(0,(MAX_COMPONENTS-1)/3).map((reminder, index) => ({
-              type: ComponentType.Section, // n + 1
+            type: ComponentType.Container,
+            components: reminders.slice(0, (MAX_COMPONENTS - 1) / 3).map((reminder, index) => ({
+              type: ComponentType.Section,
               components: [
                 {
-                  type: ComponentType.TextDisplay, // n +2
-                  content: `#${index+1} ${isPast(reminder.remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
-                }
+                  type: ComponentType.TextDisplay,
+                  content: `#${index + 1} ${isPast(reminder.remind_at, "Reminding", "Reminded")} ${dateToRelativeMarkdown(reminder.remind_at)}:\n${reminder.message.slice(0, 100)}`,
+                },
               ],
               accessory: {
-                type: ComponentType.Button, // n+3
+                type: ComponentType.Button,
                 label: "Delete Reminder",
                 style: ButtonStyle.Danger,
                 custom_id: `${DELETE_REMINDER_CUSTOM_ID_PREFIX}${reminder.id}`,
@@ -138,52 +144,49 @@ export const handleCommand = async (interaction: Interaction<CacheType>) => {
           },
         ],
       });
-      return;
-    } else if (subcommand === "create") {
-      return handleCreate(interaction, interaction.options.getString("time", true), interaction.options.getString("message", true));
-    } else if (subcommand === "create-modal") {
-      return interaction.showModal(getModalData(""));
-    } else if (subcommand === "delete") {
-      const reminderId = interaction.options.getString("reminder_id", true);
-      const reminder = await getUserReminderById(interaction.user.id, parseInt(reminderId));
-      if (!reminder)
-        return interaction.reply({
-          content: `Reminder with ID ${reminderId} not found. Make sure to select the reminder from the autocomplete list.`,
-          flags: MessageFlags.Ephemeral,
-        });
-      await deleteUserReminderById(interaction.user.id, parseInt(reminderId));
-
-      return interaction.reply({
-        content: `Reminder with ID ${reminderId} has been deleted.\nReminder Message was set to remind ${dateToRelativeMarkdown(reminder.remind_at)}${reminder.sent_at ? ` and was sent ${dateToRelativeMarkdown(reminder.sent_at)}` : ""}: \`\`\`md\n${reminder.message}\`\`\``,
-        flags: MessageFlags.Ephemeral,
-      });
     }
-  } else if (interaction.isAutocomplete() && interaction.commandName === command.name) {
-    const focusedOption = interaction.options.getFocused(true);
-    if (focusedOption.name === "reminder_id") {
-      const reminders = await getUserReminders(interaction.user.id, true);
-      const filtered = reminders.filter((reminder) => reminder.id.toString().startsWith(focusedOption.value)).slice(0, 25);
-      return interaction.respond(
+
+    if (subcommand?.name === "create") {
+      return handleCreate(interaction, String(getOption(subcommand, "time")?.value || ""), String(getOption(subcommand, "message")?.value || ""));
+    }
+
+    if (subcommand?.name === "create-modal") {
+      return modalResponse(getModalData(""));
+    }
+
+    if (subcommand?.name === "delete") {
+      const reminderId = String(getOption(subcommand, "reminder_id")?.value || "");
+      const reminder = await getUserReminderById(userId, parseInt(reminderId));
+      if (!reminder) return ephemeralText(`Reminder with ID ${reminderId} not found. Make sure to select the reminder from the autocomplete list.`);
+
+      await deleteUserReminderById(userId, parseInt(reminderId));
+      return ephemeralText(reminderDeletedMessage(reminderId, reminder));
+    }
+  }
+
+  if (isAutocomplete(interaction) && interaction.data.name === command.name) {
+    const focusedOption = getFocusedOption(interaction);
+    if (focusedOption?.name === "reminder_id") {
+      const userId = getUserId(interaction);
+      const reminders = await getUserReminders(userId, true);
+      const focusedValue = String(focusedOption.value || "");
+      const filtered = reminders.filter((reminder) => reminder.id.toString().startsWith(focusedValue)).slice(0, 25);
+      return autocompleteResponse(
         filtered.map((reminder) => ({
           name: `#${reminder.id} - ${reminder.message.slice(0, 50)} (${moment(reminder.remind_at).fromNow()})`,
           value: reminder.id.toString(),
         }))
       );
     }
-  } else if (interaction.isButton() && interaction.customId.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) {
-    const reminderId = interaction.customId.slice(DELETE_REMINDER_CUSTOM_ID_PREFIX.length);
-    const reminder = await getUserReminderById(interaction.user.id, parseInt(reminderId));
-    if (!reminder) {
-      return interaction.reply({
-        content: `Reminder with ID ${reminderId} not found or already deleted.`,
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    await deleteUserReminderById(interaction.user.id, parseInt(reminderId));
+  }
 
-    return interaction.reply({
-      content: `Reminder with ID ${reminderId} has been deleted.\nReminder Message was set to remind ${dateToRelativeMarkdown(reminder.remind_at)}${reminder.sent_at ? ` and was sent ${dateToRelativeMarkdown(reminder.sent_at)}` : ""}: \`\`\`md\n${reminder.message}\`\`\``,
-      flags: MessageFlags.Ephemeral,
-    });
+  if (isMessageComponent(interaction) && interaction.data.custom_id.startsWith(DELETE_REMINDER_CUSTOM_ID_PREFIX)) {
+    const userId = getUserId(interaction);
+    const reminderId = interaction.data.custom_id.slice(DELETE_REMINDER_CUSTOM_ID_PREFIX.length);
+    const reminder = await getUserReminderById(userId, parseInt(reminderId));
+    if (!reminder) return ephemeralText(`Reminder with ID ${reminderId} not found or already deleted.`);
+
+    await deleteUserReminderById(userId, parseInt(reminderId));
+    return ephemeralText(reminderDeletedMessage(reminderId, reminder));
   }
 };

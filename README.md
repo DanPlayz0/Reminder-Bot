@@ -10,6 +10,25 @@ A reminder bot using NLP for the Discord Buildathon 2025.
 4. Submit to create the reminder.
 5. Wait and receive your reminder.
 
+## HTTP interactions
+
+This bot runs as a Discord HTTP Interactions endpoint instead of a Gateway bot.
+Configure the Discord Developer Portal interactions endpoint URL to:
+
+```text
+https://your-domain.example/interactions
+```
+
+Required environment variables:
+
+```text
+DISCORD_TOKEN=...
+DISCORD_PUBLIC_KEY=...
+DISCORD_APPLICATION_ID=1451435856714793091
+POSTGRES_URL=...
+PORT=3000
+```
+
 ## Screenshots
 
 ![Context Menu Remind Me](./images/context-menu-remind-me.png)

@@ -19,6 +19,7 @@ import {
   APIInteraction,
   APIInteractionResponse,
   APIModalInteractionResponseCallbackData,
+  APITextInputComponent,
   ApplicationCommandType,
   ApplicationIntegrationType,
   ComponentType,
@@ -44,6 +45,18 @@ export const shouldHandleCommand = (interaction: APIInteraction): boolean => {
 };
 
 export function getModalData(content: string): APIModalInteractionResponseCallbackData {
+  const messageInput: APITextInputComponent = {
+    type: ComponentType.TextInput,
+    custom_id: "message",
+    style: 2,
+    label: "Reminder content",
+    required: true,
+    placeholder: "Add this as a sticker",
+    min_length: 1,
+    max_length: MAX_REMINDER_MESSAGE_LENGTH,
+    ...(content ? { value: content } : {}),
+  };
+
   return {
     title: "Create Reminder",
     custom_id: CREATE_MODAL_CUSTOM_ID,
@@ -65,19 +78,7 @@ export function getModalData(content: string): APIModalInteractionResponseCallba
       },
       {
         type: ComponentType.ActionRow,
-        components: [
-          {
-            type: ComponentType.TextInput,
-            custom_id: "message",
-            style: 2,
-            label: "Reminder content",
-            required: true,
-            placeholder: "Add this as a sticker",
-            min_length: 1,
-            max_length: MAX_REMINDER_MESSAGE_LENGTH,
-            value: content,
-          },
-        ],
+        components: [messageInput],
       },
     ],
   };
